@@ -29,6 +29,7 @@ import { twMerge } from 'tailwind-merge';
 import type { CallResult, ModelInfo, Run, RunConfig } from './types';
 import { buildBody, callOnce, parseGenerationConfig } from './gemini';
 import { callsCsv, download, histogram, runStats, runsJson, summaryCsv } from './stats';
+import { TEMPLATE_VARS, hasVariables, invalidVariables, renderTemplate } from './template';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -162,6 +163,23 @@ export default function App() {
   const activeRun = runs.find(r => r.status === 'running') ?? null;
 
   const abortRef = useRef<AbortController | null>(null);
+
+  // Vložení proměnné na pozici kurzoru do naposledy aktivního pole
+  const sysRef = useRef<HTMLTextAreaElement>(null);
+  const ctxRef = useRef<HTMLTextAreaElement>(null);
+  const lastField = useRef<'systemInstruction' | 'context'>('context');
+  const insertVariable = (token: string) => {
+    const field = lastField.current;
+    const el = field === 'context' ? ctxRef.current : sysRef.current;
+    const value = config[field];
+    const start = el?.selectionStart ?? value.length;
+    const end = el?.selectionEnd ?? value.length;
+    set(field, value.slice(0, start) + token + value.slice(end));
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(start + token.length, start + token.length);
+    });
+  };
   const [running, setRunning] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -172,10 +190,10 @@ export default function App() {
     if (!config.context.trim()) return setFormError('Vyplňte kontext (zprávu pro model).');
     if (!(config.calls >= 1 && config.calls <= 1000)) return setFormError('Počet volání musí být 1–1000.');
     if (!(config.pauseMs >= 0)) return setFormError('Pauza nesmí být záporná.');
-    let body: unknown;
+    const badVars = [...invalidVariables(config.systemInstruction), ...invalidVariables(config.context)];
+    if (badVars.length) return setFormError(`Neplatná proměnná: ${badVars.join(', ')}`);
     try {
       parseGenerationConfig(config.generationConfig);
-      body = buildBody(config);
     } catch (e) {
       return setFormError((e as Error).message);
     }
@@ -196,7 +214,16 @@ export default function App() {
 
     for (let i = 1; i <= run.config.calls; i++) {
       if (ctrl.signal.aborted) break;
-      const res = await callOnce(apiKey.trim(), run.config, body, i, ctrl.signal);
+      // Proměnné se dosazují před každým voláním zvlášť
+      const cfg = run.config;
+      const tctx = { i, n: cfg.calls, now: new Date() };
+      const sysDynamic = hasVariables(cfg.systemInstruction);
+      const ctxDynamic = hasVariables(cfg.context);
+      const sys = sysDynamic ? renderTemplate(cfg.systemInstruction, tctx) : cfg.systemInstruction;
+      const ctxText = ctxDynamic ? renderTemplate(cfg.context, tctx) : cfg.context;
+      const res = await callOnce(apiKey.trim(), cfg, buildBody(cfg, sys, ctxText), i, ctrl.signal);
+      if (sysDynamic) res.renderedSystemInstruction = sys;
+      if (ctxDynamic) res.renderedContext = ctxText;
       if (ctrl.signal.aborted && res.error === 'Přerušeno') break;
       setRuns(rs => rs.map(r => (r.id === run.id ? { ...r, results: [...r.results, res] } : r)));
       if (i < run.config.calls) await sleep(run.config.pauseMs, ctrl.signal);
@@ -350,17 +377,27 @@ export default function App() {
 
           <label className="space-y-1.5 block">
             <span className="field-label">System instruction <span className="text-fg-subtle font-normal">· volitelné</span></span>
-            <textarea className="input h-auto min-h-[84px] py-2.5 font-mono text-[13px] leading-relaxed resize-y"
+            <textarea ref={sysRef} className="input h-auto min-h-[84px] py-2.5 font-mono text-[13px] leading-relaxed resize-y"
               value={config.systemInstruction} onChange={e => set('systemInstruction', e.target.value)}
+              onFocus={() => (lastField.current = 'systemInstruction')}
               placeholder="Jsi stručný asistent…" disabled={running} />
           </label>
 
           <label className="space-y-1.5 block">
             <span className="field-label">Kontext <span className="text-fg-subtle font-normal">· obsah zprávy odeslané modelu</span></span>
-            <textarea className="input h-auto min-h-[120px] py-2.5 font-mono text-[13px] leading-relaxed resize-y"
-              value={config.context} onChange={e => set('context', e.target.value)} disabled={running} />
+            <textarea ref={ctxRef} className="input h-auto min-h-[120px] py-2.5 font-mono text-[13px] leading-relaxed resize-y"
+              value={config.context} onChange={e => set('context', e.target.value)}
+              onFocus={() => (lastField.current = 'context')} disabled={running} />
             <span className="text-xs text-fg-subtle tabular-nums">{nf(config.context.length)} znaků</span>
           </label>
+
+          <TemplateHelp
+            onInsert={insertVariable}
+            disabled={running}
+            systemInstruction={config.systemInstruction}
+            context={config.context}
+            calls={config.calls}
+          />
 
           <details className="group">
             <summary className="cursor-pointer select-none text-[13px] text-fg-muted hover:text-fg inline-flex items-center gap-1.5">
@@ -414,6 +451,55 @@ export default function App() {
         <span>Gemini Tester · měření odezvy Gemini API</span>
         <span>AI Statistiky · © {new Date().getFullYear()} Jan Kuchař</span>
       </footer>
+    </div>
+  );
+}
+
+function TemplateHelp({ onInsert, disabled, systemInstruction, context, calls }: {
+  onInsert: (token: string) => void; disabled: boolean; systemInstruction: string; context: string; calls: number;
+}) {
+  const dynamic = hasVariables(systemInstruction) || hasVariables(context);
+  const invalid = [...invalidVariables(systemInstruction), ...invalidVariables(context)];
+  const [seed, setSeed] = useState(0);
+  const preview = useMemo(() => {
+    const ctx = { i: 1, n: Math.max(1, calls || 1), now: new Date() };
+    return { sys: renderTemplate(systemInstruction, ctx), ctx: renderTemplate(context, ctx) };
+    // seed jen vynutí nové náhodné hodnoty
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [systemInstruction, context, calls, seed]);
+  return (
+    <div className="sunken p-3 space-y-2">
+      <div className="flex items-baseline justify-between gap-3 flex-wrap">
+        <span className="field-label">Dynamické proměnné</span>
+        <span className="text-xs text-fg-subtle">Klikněte pro vložení na pozici kurzoru · dosazují se před každým voláním</span>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {TEMPLATE_VARS.map(v => (
+          <button key={v.token} type="button" className="btn btn-secondary btn-sm font-mono" title={v.description}
+            onMouseDown={e => e.preventDefault()} onClick={() => onInsert(v.insert)} disabled={disabled}>
+            {v.token}
+          </button>
+        ))}
+      </div>
+      {invalid.length > 0 && <p className="text-xs text-danger">Neplatná proměnná: {invalid.join(', ')}</p>}
+      {dynamic && (
+        <details>
+          <summary className="cursor-pointer select-none text-[13px] text-fg-muted hover:text-fg">Náhled prvního volání</summary>
+          <div className="mt-2 space-y-2">
+            {systemInstruction.trim() && (
+              <div>
+                <div className="section-label mb-1">System instruction</div>
+                <pre className="card p-2.5 text-[12px] font-mono whitespace-pre-wrap break-words max-h-40 overflow-auto">{preview.sys}</pre>
+              </div>
+            )}
+            <div>
+              <div className="section-label mb-1">Kontext</div>
+              <pre className="card p-2.5 text-[12px] font-mono whitespace-pre-wrap break-words max-h-40 overflow-auto">{preview.ctx}</pre>
+            </div>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSeed(x => x + 1)}>Vygenerovat znovu</button>
+          </div>
+        </details>
+      )}
     </div>
   );
 }
@@ -626,6 +712,19 @@ function CallRow({ r, stream, median, open, onToggle }: {
               <p className="flex items-start gap-1.5 text-danger text-[13px] mb-2"><AlertTriangle size={14} className="mt-0.5 shrink-0" />{r.error}</p>
             )}
             {r.modelVersion && <p className="text-xs text-fg-subtle mb-1.5">modelVersion: <code>{r.modelVersion}</code></p>}
+            {r.renderedSystemInstruction && (
+              <div className="mb-2">
+                <div className="section-label mb-1">Odeslaná system instruction</div>
+                <pre className="sunken p-3 text-[12px] font-mono whitespace-pre-wrap break-words max-h-40 overflow-auto">{r.renderedSystemInstruction}</pre>
+              </div>
+            )}
+            {r.renderedContext && (
+              <div className="mb-2">
+                <div className="section-label mb-1">Odeslaný kontext</div>
+                <pre className="sunken p-3 text-[12px] font-mono whitespace-pre-wrap break-words max-h-40 overflow-auto">{r.renderedContext}</pre>
+              </div>
+            )}
+            {(r.renderedSystemInstruction || r.renderedContext) && r.text && <div className="section-label mb-1">Odpověď</div>}
             {r.text ? (
               <pre className="sunken p-3 text-[12px] font-mono whitespace-pre-wrap break-words max-h-72 overflow-auto">{r.text}</pre>
             ) : !r.error && <p className="text-fg-subtle text-[13px]">Prázdná odpověď</p>}

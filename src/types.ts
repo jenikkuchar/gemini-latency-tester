@@ -26,6 +26,9 @@ export interface CallResult {
   finishReason: string | null;
   modelVersion: string | null;
   text: string;
+  /** Skutečně odeslané texty po dosazení proměnných (jen pokud šablona proměnné obsahuje) */
+  renderedSystemInstruction?: string | null;
+  renderedContext?: string | null;
 }
 
 export type RunStatus = 'running' | 'done' | 'aborted';
