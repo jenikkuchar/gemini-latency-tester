@@ -65,6 +65,8 @@ const nf = (n: number, digits = 0) =>
   n.toLocaleString('cs-CZ', { minimumFractionDigits: digits, maximumFractionDigits: digits });
 const ms = (n: number | null | undefined) =>
   n === null || n === undefined ? '–' : n >= 10000 ? `${nf(n / 1000, 2)} s` : `${nf(n)} ms`;
+// Popisky osy latence: do 1 s v ms, nad 1 s v sekundách, aby se vešly
+const axisMs = (v: number) => (v === 0 ? '0' : v >= 1000 ? `${nf(v / 1000, v % 1000 ? 1 : 0)} s` : `${nf(v)} ms`);
 const fmtDate = (iso: string) =>
   new Date(iso).toLocaleString('cs-CZ', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
@@ -608,10 +610,10 @@ function RunDetail({ run, theme }: { run: Run; theme: ChartTheme }) {
           <h3 className="text-[15px] font-semibold mb-3">Latence podle volání</h3>
           <div className="h-[240px]">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={series} margin={{ top: 4, right: 4, bottom: 0, left: -8 }} barCategoryGap="20%">
+              <BarChart data={series} margin={{ top: 4, right: 4, bottom: 0, left: 0 }} barCategoryGap="20%">
                 <CartesianGrid vertical={false} stroke={theme.grid} />
                 <XAxis dataKey="call" {...axis} />
-                <YAxis {...axis} tickFormatter={v => nf(v)} unit=" ms" width={64} />
+                <YAxis {...axis} tickFormatter={axisMs} width={60} />
                 <Tooltip cursor={{ fill: theme.cursor }} contentStyle={TOOLTIP_STYLE} labelStyle={TOOLTIP_LABEL_STYLE} itemStyle={TOOLTIP_ITEM_STYLE}
                   labelFormatter={v => `Volání ${v}`} formatter={(v: number) => `${nf(v)} ms`} />
                 <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
