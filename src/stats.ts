@@ -96,12 +96,14 @@ export function callsCsv(runs: Run[]): string {
   const rows: unknown[][] = [[
     'run_id', 'model', 'stream', 'call', 'started_at', 'ok', 'http_status', 'latency_ms', 'ttft_ms',
     'prompt_tokens', 'output_tokens', 'thoughts_tokens', 'total_tokens', 'finish_reason', 'model_version', 'error', 'response',
+    'system_instruction', 'context',
   ]];
   for (const run of runs) {
     for (const r of run.results) {
       rows.push([
         run.id, run.config.model, run.config.stream, r.index, r.startedAt, r.ok, r.httpStatus, r.latencyMs, r.ttftMs,
         r.promptTokens, r.outputTokens, r.thoughtsTokens, r.totalTokens, r.finishReason, r.modelVersion, r.error, r.text,
+        r.renderedSystemInstruction ?? run.config.systemInstruction, r.renderedContext ?? run.config.context,
       ]);
     }
   }

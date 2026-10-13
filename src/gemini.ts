@@ -17,12 +17,12 @@ export function parseGenerationConfig(text: string): Record<string, unknown> | u
   return parsed as Record<string, unknown>;
 }
 
-export function buildBody(config: RunConfig) {
+export function buildBody(config: RunConfig, systemInstruction = config.systemInstruction, context = config.context) {
   const body: Record<string, unknown> = {
-    contents: [{ role: 'user', parts: [{ text: config.context }] }],
+    contents: [{ role: 'user', parts: [{ text: context }] }],
   };
-  if (config.systemInstruction.trim()) {
-    body.systemInstruction = { parts: [{ text: config.systemInstruction }] };
+  if (systemInstruction.trim()) {
+    body.systemInstruction = { parts: [{ text: systemInstruction }] };
   }
   const gen = parseGenerationConfig(config.generationConfig);
   if (gen) body.generationConfig = gen;

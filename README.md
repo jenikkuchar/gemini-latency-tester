@@ -8,6 +8,9 @@ přístup chráněný heslem (StatiCrypt).
 
 - výběr textového modelu (Pro / Flash / Flash-Lite, od nejnovější verze), nebo vlastní ID
 - **System instruction** a **Kontext** (zpráva pro model), volitelně `generationConfig` jako JSON
+- **dynamické proměnné** v system instruction i kontextu, dosazované před každým voláním:
+  `{{i}}`, `{{n}}`, `{{datum}}`, `{{cas}}`, `{{den}}`, `{{nahodne:a|b|c}}`, `{{cislo:od-do}}`, `{{uuid}}`
+  (skutečně odeslaný text je vidět u každého volání a je v exportu)
 - nastavitelný **počet volání** (výchozí 10) a **pauza** mezi nimi (výchozí 100 ms)
 - režim *Celá odpověď* nebo *Streaming* s měřením TTFT (čas do prvního bloku)
 - statistiky: min, max, průměr, medián, P90/P95/P99, směrodatná odchylka, chybovost,
