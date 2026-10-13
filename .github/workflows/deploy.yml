@@ -1,0 +1,61 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Encrypt with StatiCrypt
+        env:
+          APP_NAME: Gemini Tester
+          STATICRYPT_PASSWORD: ${{ secrets.STATICRYPT_PASSWORD }}
+          STATICRYPT_SALT: ${{ secrets.STATICRYPT_SALT }}
+        run: |
+          test -n "$STATICRYPT_PASSWORD" || { echo "Chybí secret STATICRYPT_PASSWORD"; exit 1; }
+          test -n "$STATICRYPT_SALT" || { echo "Chybí secret STATICRYPT_SALT"; exit 1; }
+          curl -fsSL https://www.jan-kuchar.cz/brand/staticrypt.html -o /tmp/staticrypt.html
+          npx -y staticrypt@3.5.4 dist/index.html -d dist -c false \
+            -t /tmp/staticrypt.html \
+            --salt "$STATICRYPT_SALT" --remember 30 --short \
+            --template-title "$APP_NAME · přihlášení" \
+            --template-instructions "Tento nástroj je chráněný heslem." \
+            --template-placeholder "Heslo" \
+            --template-button "Odemknout" \
+            --template-remember "Zapamatovat na 30 dní" \
+            --template-error "Špatné heslo" \
+            --template-toggle-show "Zobrazit heslo" \
+            --template-toggle-hide "Skrýt heslo"
+          grep -q "staticrypt" dist/index.html || { echo "index.html není zašifrovaný"; exit 1; }
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
