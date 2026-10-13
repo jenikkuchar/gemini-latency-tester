@@ -241,9 +241,7 @@ export default function App() {
   const stop = () => abortRef.current?.abort();
 
   const deleteRun = (id: string) => setRuns(rs => rs.filter(r => r.id !== id));
-  const clearRuns = () => {
-    if (confirm('Smazat všechny uložené běhy?')) setRuns(rs => rs.filter(r => r.status === 'running'));
-  };
+  const clearRuns = () => setRuns(rs => rs.filter(r => r.status === 'running'));
 
   const stamp = () => new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
   const finishedRuns = runs.filter(r => r.results.length > 0);
