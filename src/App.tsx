@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Play,
   Square,
-  RefreshCw,
   Download,
   Trash2,
   KeyRound,
@@ -28,7 +27,7 @@ import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
 import type { CallResult, ModelInfo, Run, RunConfig } from './types';
-import { buildBody, callOnce, listModels, parseGenerationConfig } from './gemini';
+import { buildBody, callOnce, parseGenerationConfig } from './gemini';
 import { callsCsv, download, histogram, runStats, runsJson, summaryCsv } from './stats';
 
 function cn(...inputs: ClassValue[]) {
@@ -68,16 +67,37 @@ const ms = (n: number | null | undefined) =>
 const fmtDate = (iso: string) =>
   new Date(iso).toLocaleString('cs-CZ', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-const FALLBACK_MODELS: ModelInfo[] = [
-  'gemini-2.5-flash',
-  'gemini-2.5-flash-lite',
-  'gemini-2.5-pro',
-  'gemini-flash-latest',
-  'gemini-flash-lite-latest',
-].map(id => ({ id, displayName: id }));
+// Textové modely dle https://ai.google.dev/gemini-api/docs/models (bez TTS, Live, obrázků a vypnutých),
+// v každé skupině od nejvyšší verze po nejnižší
+const MODEL_GROUPS: { label: string; models: ModelInfo[] }[] = [
+  {
+    label: 'Pro',
+    models: [
+      { id: 'gemini-3.1-pro-preview', displayName: 'Gemini 3.1 Pro (preview)' },
+      { id: 'gemini-2.5-pro', displayName: 'Gemini 2.5 Pro' },
+    ],
+  },
+  {
+    label: 'Flash',
+    models: [
+      { id: 'gemini-3.8-flash', displayName: 'Gemini 3.8 Flash' },
+      { id: 'gemini-3.6-flash', displayName: 'Gemini 3.6 Flash' },
+      { id: 'gemini-3-flash-preview', displayName: 'Gemini 3 Flash (preview)' },
+      { id: 'gemini-2.5-flash', displayName: 'Gemini 2.5 Flash' },
+    ],
+  },
+  {
+    label: 'Flash-Lite',
+    models: [
+      { id: 'gemini-3.5-flash-lite', displayName: 'Gemini 3.5 Flash-Lite' },
+      { id: 'gemini-3.1-flash-lite', displayName: 'Gemini 3.1 Flash-Lite' },
+      { id: 'gemini-2.5-flash-lite', displayName: 'Gemini 2.5 Flash-Lite' },
+    ],
+  },
+];
 
 const DEFAULT_CONFIG: RunConfig = {
-  model: 'gemini-2.5-flash',
+  model: 'gemini-3.8-flash',
   systemInstruction: '',
   context: 'Napiš jednu větu o tom, proč je rychlá odezva důležitá.',
   calls: 10,
@@ -130,26 +150,6 @@ export default function App() {
   const [config, setConfig] = useState<RunConfig>(() => ({ ...DEFAULT_CONFIG, ...lsGet(LS_CONFIG, {}) }));
   useEffect(() => lsSet(LS_CONFIG, config), [config]);
   const set = <K extends keyof RunConfig>(k: K, v: RunConfig[K]) => setConfig(c => ({ ...c, [k]: v }));
-
-  const [models, setModels] = useState<ModelInfo[]>(FALLBACK_MODELS);
-  const [modelsState, setModelsState] = useState<{ loading: boolean; error: string | null; loaded: boolean }>({
-    loading: false, error: null, loaded: false,
-  });
-  const loadModels = async (key = apiKey) => {
-    if (!key) return;
-    setModelsState(s => ({ ...s, loading: true, error: null }));
-    try {
-      const list = await listModels(key);
-      setModels(list.length ? list : FALLBACK_MODELS);
-      setModelsState({ loading: false, error: null, loaded: true });
-    } catch (e) {
-      setModelsState({ loading: false, error: (e as Error).message, loaded: false });
-    }
-  };
-  useEffect(() => {
-    if (apiKey) loadModels(apiKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const [runs, setRuns] = useState<Run[]>(() =>
     lsGet<Run[]>(LS_RUNS, []).map(r => (r.status === 'running' ? { ...r, status: 'aborted' as const } : r)),
@@ -219,7 +219,7 @@ export default function App() {
   const stamp = () => new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
   const finishedRuns = runs.filter(r => r.results.length > 0);
 
-  const modelInList = models.some(m => m.id === config.model);
+  const modelInList = MODEL_GROUPS.some(g => g.models.some(m => m.id === config.model));
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -282,7 +282,6 @@ export default function App() {
                     placeholder="AIza…"
                     value={apiKey}
                     onChange={e => setApiKey(e.target.value)}
-                    onBlur={() => apiKey && !modelsState.loaded && loadModels()}
                   />
                   <button
                     type="button"
@@ -301,45 +300,31 @@ export default function App() {
             </label>
 
             <div className="space-y-1.5">
-              <span className="field-label">
-                Model
-                {modelsState.loaded && <span className="text-fg-subtle font-normal">· {nf(models.length)} z API</span>}
-              </span>
-              <div className="flex gap-2">
-                <select
-                  className="input flex-1 min-w-0"
-                  value={modelInList ? config.model : '__custom'}
-                  onChange={e => set('model', e.target.value === '__custom' ? '' : e.target.value)}
-                  disabled={running}
-                >
-                  {models.map(m => (
-                    <option key={m.id} value={m.id}>
-                      {m.id}{m.displayName && m.displayName !== m.id ? ` – ${m.displayName}` : ''}
-                    </option>
-                  ))}
-                  <option value="__custom">Vlastní…</option>
-                </select>
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-icon h-9"
-                  onClick={() => loadModels()}
-                  disabled={!apiKey || modelsState.loading}
-                  title="Načíst modely z API"
-                  aria-label="Načíst modely z API"
-                >
-                  <RefreshCw className={cn(modelsState.loading && 'animate-spin')} />
-                </button>
-              </div>
+              <span className="field-label">Model</span>
+              <select
+                className="input"
+                value={modelInList ? config.model : '__custom'}
+                onChange={e => set('model', e.target.value === '__custom' ? '' : e.target.value)}
+                disabled={running}
+              >
+                {MODEL_GROUPS.map(g => (
+                  <optgroup key={g.label} label={g.label}>
+                    {g.models.map(m => (
+                      <option key={m.id} value={m.id}>{m.displayName} · {m.id}</option>
+                    ))}
+                  </optgroup>
+                ))}
+                <option value="__custom">Vlastní…</option>
+              </select>
               {!modelInList && (
                 <input
                   className="input font-mono text-[13px]"
-                  placeholder="např. gemini-2.5-flash"
+                  placeholder="např. gemini-3.8-flash"
                   value={config.model}
                   onChange={e => set('model', e.target.value.trim())}
                   disabled={running}
                 />
               )}
-              {modelsState.error && <p className="text-xs text-danger">Seznam modelů: {modelsState.error}</p>}
             </div>
           </div>
 

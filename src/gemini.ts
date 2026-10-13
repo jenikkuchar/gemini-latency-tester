@@ -1,23 +1,6 @@
-import type { CallResult, ModelInfo, RunConfig } from './types';
+import type { CallResult, RunConfig } from './types';
 
 const API = 'https://generativelanguage.googleapis.com/v1beta';
-
-export async function listModels(apiKey: string): Promise<ModelInfo[]> {
-  const out: ModelInfo[] = [];
-  let pageToken = '';
-  do {
-    const url = `${API}/models?pageSize=1000${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`;
-    const res = await fetch(url, { headers: { 'x-goog-api-key': apiKey } });
-    const data = await res.json().catch(() => null);
-    if (!res.ok) throw new Error(errorMessage(data, res.status));
-    for (const m of data?.models ?? []) {
-      if (!m.supportedGenerationMethods?.includes('generateContent')) continue;
-      out.push({ id: String(m.name).replace(/^models\//, ''), displayName: m.displayName ?? m.name });
-    }
-    pageToken = data?.nextPageToken ?? '';
-  } while (pageToken);
-  return out.sort((a, b) => a.id.localeCompare(b.id));
-}
 
 /** Ověří JSON generationConfig; vrací objekt nebo vyhodí chybu s českou zprávou */
 export function parseGenerationConfig(text: string): Record<string, unknown> | undefined {
