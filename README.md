@@ -6,7 +6,7 @@ přístup chráněný heslem (StatiCrypt).
 
 ## Funkce
 
-- výběr modelu (seznam načtený z API podle klíče, nebo vlastní ID)
+- výběr textového modelu (Pro / Flash / Flash-Lite, od nejnovější verze), nebo vlastní ID
 - **System instruction** a **Kontext** (zpráva pro model), volitelně `generationConfig` jako JSON
 - nastavitelný **počet volání** (výchozí 10) a **pauza** mezi nimi (výchozí 100 ms)
 - režim *Celá odpověď* nebo *Streaming* s měřením TTFT (čas do prvního bloku)
