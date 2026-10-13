@@ -22,6 +22,8 @@ export interface CallResult {
   promptTokens: number | null;
   outputTokens: number | null;
   thoughtsTokens: number | null;
+  /** Vstupní tokeny načtené z cache (usageMetadata.cachedContentTokenCount); u starších běhů chybí */
+  cachedTokens?: number | null;
   totalTokens: number | null;
   finishReason: string | null;
   modelVersion: string | null;
@@ -64,6 +66,11 @@ export interface RunStats {
   avgOutputTokens: number | null;
   avgPromptTokens: number | null;
   avgThoughtsTokens: number | null;
+  /** Podíl volání, kde se část vstupu načetla z cache (0–1) */
+  cacheHitRate: number | null;
+  /** Průměrný podíl vstupních tokenů z cache (0–1) */
+  avgCachedShare: number | null;
+  avgCachedTokens: number | null;
   /** Průměrná rychlost generování výstupních tokenů (tok/s) */
   tokensPerSec: number | null;
 }

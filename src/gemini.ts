@@ -128,6 +128,8 @@ export async function callOnce(
     promptTokens: u.promptTokenCount ?? null,
     outputTokens: u.candidatesTokenCount ?? null,
     thoughtsTokens: u.thoughtsTokenCount ?? null,
+    // Bez cache API pole vůbec nevrací → 0, pokud odpověď usageMetadata obsahuje
+    cachedTokens: acc.usage ? (u.cachedContentTokenCount ?? 0) : null,
     totalTokens: u.totalTokenCount ?? null,
     finishReason: acc.finishReason,
     modelVersion: acc.modelVersion,

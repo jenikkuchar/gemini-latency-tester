@@ -33,6 +33,7 @@ const avg = (xs: (number | null)[]) => {
 
 export function runStats(results: CallResult[]): RunStats {
   const ok = results.filter(r => r.ok);
+  const withCache = ok.filter(r => r.cachedTokens !== undefined && r.cachedTokens !== null);
   // Rychlost generování: výstupní tokeny / doba generování (ve streamingu bez TTFT)
   const tps = ok
     .map(r => {
@@ -52,6 +53,9 @@ export function runStats(results: CallResult[]): RunStats {
     avgOutputTokens: avg(ok.map(r => r.outputTokens)),
     avgPromptTokens: avg(ok.map(r => r.promptTokens)),
     avgThoughtsTokens: avg(ok.map(r => r.thoughtsTokens)),
+    cacheHitRate: avg(withCache.map(r => (r.cachedTokens! > 0 ? 1 : 0))),
+    avgCachedShare: avg(withCache.map(r => (r.promptTokens ? r.cachedTokens! / r.promptTokens : null))),
+    avgCachedTokens: avg(withCache.map(r => r.cachedTokens!)),
     tokensPerSec: avg(tps),
   };
 }
@@ -95,14 +99,14 @@ const toCsv = (rows: unknown[][]) => '﻿' + rows.map(r => r.map(csvCell).join('
 export function callsCsv(runs: Run[]): string {
   const rows: unknown[][] = [[
     'run_id', 'model', 'stream', 'call', 'started_at', 'ok', 'http_status', 'latency_ms', 'ttft_ms',
-    'prompt_tokens', 'output_tokens', 'thoughts_tokens', 'total_tokens', 'finish_reason', 'model_version', 'error', 'response',
+    'prompt_tokens', 'cached_tokens', 'output_tokens', 'thoughts_tokens', 'total_tokens', 'finish_reason', 'model_version', 'error', 'response',
     'system_instruction', 'context',
   ]];
   for (const run of runs) {
     for (const r of run.results) {
       rows.push([
         run.id, run.config.model, run.config.stream, r.index, r.startedAt, r.ok, r.httpStatus, r.latencyMs, r.ttftMs,
-        r.promptTokens, r.outputTokens, r.thoughtsTokens, r.totalTokens, r.finishReason, r.modelVersion, r.error, r.text,
+        r.promptTokens, r.cachedTokens, r.outputTokens, r.thoughtsTokens, r.totalTokens, r.finishReason, r.modelVersion, r.error, r.text,
         r.renderedSystemInstruction ?? run.config.systemInstruction, r.renderedContext ?? run.config.context,
       ]);
     }
@@ -114,7 +118,7 @@ export function summaryCsv(runs: Run[]): string {
   const rows: unknown[][] = [[
     'run_id', 'started_at', 'model', 'stream', 'calls', 'pause_ms', 'ok', 'errors', 'error_rate',
     'lat_min', 'lat_mean', 'lat_median', 'lat_p90', 'lat_p95', 'lat_p99', 'lat_max', 'lat_stddev',
-    'ttft_median', 'ttft_p95', 'avg_prompt_tokens', 'avg_output_tokens', 'avg_thoughts_tokens', 'tokens_per_sec',
+    'ttft_median', 'ttft_p95', 'avg_prompt_tokens', 'avg_cached_tokens', 'cache_hit_rate', 'avg_cached_share', 'avg_output_tokens', 'avg_thoughts_tokens', 'tokens_per_sec',
     'system_instruction', 'context', 'generation_config',
   ]];
   for (const run of runs) {
@@ -123,7 +127,7 @@ export function summaryCsv(runs: Run[]): string {
     rows.push([
       run.id, run.startedAt, run.config.model, run.config.stream, s.total, run.config.pauseMs, s.ok, s.errors, s.errorRate,
       l?.min, l?.mean, l?.median, l?.p90, l?.p95, l?.p99, l?.max, l?.stddev,
-      s.ttft?.median, s.ttft?.p95, s.avgPromptTokens, s.avgOutputTokens, s.avgThoughtsTokens, s.tokensPerSec,
+      s.ttft?.median, s.ttft?.p95, s.avgPromptTokens, s.avgCachedTokens, s.cacheHitRate, s.avgCachedShare, s.avgOutputTokens, s.avgThoughtsTokens, s.tokensPerSec,
       run.config.systemInstruction, run.config.context, run.config.generationConfig,
     ]);
   }
