@@ -14,7 +14,7 @@ přístup chráněný heslem (StatiCrypt).
 - nastavitelný **počet volání** (výchozí 10) a **pauza** mezi nimi (výchozí 100 ms)
 - režim *Celá odpověď* nebo *Streaming* s měřením TTFT (čas do prvního bloku)
 - statistiky: min, max, průměr, medián, P90/P95/P99, směrodatná odchylka, chybovost,
-  tokeny (vstup/výstup/myšlení), rychlost tok/s; graf latence a histogram
+  tokeny (vstup/výstup/myšlení), **využití cache** (`cachedContentTokenCount`), rychlost tok/s; graf latence a histogram
 - historie běhů v prohlížeči a jejich porovnání
 - **export**: CSV volání (vybraný běh / všechny), CSV souhrn běhů, kompletní JSON
 

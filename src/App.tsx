@@ -67,6 +67,7 @@ const ms = (n: number | null | undefined) =>
   n === null || n === undefined ? '–' : n >= 10000 ? `${nf(n / 1000, 2)} s` : `${nf(n)} ms`;
 // Popisky osy latence: do 1 s v ms, nad 1 s v sekundách, aby se vešly
 const axisMs = (v: number) => (v === 0 ? '0' : v >= 1000 ? `${nf(v / 1000, v % 1000 ? 1 : 0)} s` : `${nf(v)} ms`);
+const pct = (x: number) => `${nf(x * 100)} %`;
 const fmtDate = (iso: string) =>
   new Date(iso).toLocaleString('cs-CZ', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
@@ -555,7 +556,7 @@ function Kpi({ label, value, sub, tone }: { label: string; value: string; sub?: 
     <div className="card p-3.5 sm:p-4 min-w-0">
       <div className="section-label">{label}</div>
       <div className={cn('text-[22px] font-semibold tracking-[-0.01em] tabular-nums mt-1 truncate', tone === 'danger' && 'text-danger')}>{value}</div>
-      {sub && <div className="text-xs text-fg-subtle mt-0.5 tabular-nums truncate">{sub}</div>}
+      {sub && <div className="text-xs text-fg-subtle mt-0.5 tabular-nums truncate" title={sub}>{sub}</div>}
     </div>
   );
 }
@@ -588,7 +589,7 @@ function RunDetail({ run, theme }: { run: Run; theme: ChartTheme }) {
         </span>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
         <Kpi label="Medián" value={ms(l?.median)} sub={l ? `průměr ${ms(l.mean)}` : undefined} />
         <Kpi label="P95" value={ms(l?.p95)} sub={l ? `P90 ${ms(l.p90)} · P99 ${ms(l.p99)}` : undefined} />
         <Kpi label="Min / Max" value={l ? `${ms(l.min)}` : '–'} sub={l ? `max ${ms(l.max)} · σ ${ms(l.stddev)}` : undefined} />
@@ -599,6 +600,9 @@ function RunDetail({ run, theme }: { run: Run; theme: ChartTheme }) {
             sub={s.avgPromptTokens !== null ? `vstup ${nf(s.avgPromptTokens)}${s.avgThoughtsTokens ? ` · myšlení ${nf(s.avgThoughtsTokens)}` : ''}` : 'průměr'} />
         )}
         <Kpi label="Rychlost" value={s.tokensPerSec !== null ? `${nf(s.tokensPerSec, 1)} tok/s` : '–'} sub="výstupní tokeny" />
+        <Kpi label="Cache" value={s.cacheHitRate !== null ? pct(s.cacheHitRate) : '–'}
+          sub={s.cacheHitRate === null ? 'bez údajů' : s.avgCachedShare !== null && s.cacheHitRate > 0
+            ? `volání · ${pct(s.avgCachedShare)} vstupu` : 'volání s cache'} />
         <Kpi label="Úspěšnost" value={`${nf(s.ok)} / ${nf(s.total)}`}
           sub={s.errors ? `${nf(s.errorRate * 100, 1)} % chyb` : 'bez chyb'} tone={s.errors ? 'danger' : undefined} />
       </div>
@@ -659,6 +663,7 @@ function RunDetail({ run, theme }: { run: Run; theme: ChartTheme }) {
                 <th className="px-3 py-2 font-semibold text-right">Vstup</th>
                 <th className="px-3 py-2 font-semibold text-right">Výstup</th>
                 <th className="px-3 py-2 font-semibold text-right">Myšlení</th>
+                <th className="px-3 py-2 font-semibold text-right">Cache</th>
                 <th className="px-4 py-2 font-semibold">Stav</th>
               </tr>
             </thead>
@@ -668,7 +673,7 @@ function RunDetail({ run, theme }: { run: Run; theme: ChartTheme }) {
                   open={openRow === r.index} onToggle={() => setOpenRow(o => (o === r.index ? null : r.index))} />
               ))}
               {run.results.length === 0 && (
-                <tr><td colSpan={8} className="px-4 py-6 text-center text-fg-subtle">Čeká se na první odpověď…</td></tr>
+                <tr><td colSpan={9} className="px-4 py-6 text-center text-fg-subtle">Čeká se na první odpověď…</td></tr>
               )}
             </tbody>
           </table>
@@ -689,7 +694,7 @@ function CallRow({ r, stream, median, open, onToggle }: {
   r: CallResult; stream: boolean; median: number | null; open: boolean; onToggle: () => void;
 }) {
   const slow = r.ok && median !== null && r.latencyMs > median * 1.5;
-  const cols = stream ? 8 : 7;
+  const cols = stream ? 9 : 8;
   return (
     <>
       <tr className={cn('border-b-[0.5px] border-line cursor-pointer hover:bg-fill', open && 'bg-fill')} onClick={onToggle}>
@@ -700,6 +705,10 @@ function CallRow({ r, stream, median, open, onToggle }: {
         <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap text-fg-muted">{r.promptTokens !== null ? nf(r.promptTokens) : '–'}</td>
         <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap text-fg-muted">{r.outputTokens !== null ? nf(r.outputTokens) : '–'}</td>
         <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap text-fg-muted">{r.thoughtsTokens !== null ? nf(r.thoughtsTokens) : '–'}</td>
+        <td className={cn('px-3 py-2 text-right tabular-nums whitespace-nowrap', r.cachedTokens ? 'text-success' : 'text-fg-muted')}>
+          {r.cachedTokens === undefined || r.cachedTokens === null ? '–'
+            : r.cachedTokens > 0 && r.promptTokens ? `${nf(r.cachedTokens)} (${pct(r.cachedTokens / r.promptTokens)})` : nf(r.cachedTokens)}
+        </td>
         <td className="px-4 py-2">
           {r.ok ? <span className="badge badge-dot b-ok">{r.finishReason ?? 'OK'}</span>
             : <span className="badge badge-dot b-err" title={r.error ?? ''}>{r.httpStatus ?? 'Chyba'}</span>}
@@ -761,6 +770,7 @@ function RunHistory({ runs, selectedId, onSelect, onDelete, onClear, running }: 
               <th className="px-3 py-2 font-semibold text-right">P95</th>
               <th className="px-3 py-2 font-semibold text-right">TTFT</th>
               <th className="px-3 py-2 font-semibold text-right">tok/s</th>
+              <th className="px-3 py-2 font-semibold text-right" title="Průměrný podíl vstupních tokenů z cache">Cache</th>
               <th className="px-3 py-2 font-semibold text-right">Chyby</th>
               <th className="px-4 py-2" />
             </tr>
@@ -783,6 +793,7 @@ function RunHistory({ runs, selectedId, onSelect, onDelete, onClear, running }: 
                   <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">{ms(s.latency?.p95)}</td>
                   <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">{ms(s.ttft?.median)}</td>
                   <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">{s.tokensPerSec !== null ? nf(s.tokensPerSec, 1) : '–'}</td>
+                  <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">{s.avgCachedShare !== null ? pct(s.avgCachedShare) : '–'}</td>
                   <td className={cn('px-3 py-2 text-right tabular-nums whitespace-nowrap', s.errors > 0 && 'text-danger')}>{nf(s.errors)}</td>
                   <td className="px-4 py-2 text-right">
                     <button type="button" className="p-1 text-fg-subtle hover:text-danger disabled:opacity-40" disabled={run.status === 'running'}
